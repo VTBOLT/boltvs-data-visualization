@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Data Viewer</title>
+    <link rel="stylesheet" href="sample-style.css">
+    <script src="sample-script.js"></script>
+</head>
+
+<body>
+    <img id="logo" src="logo.png" alt="BOLT Logo">
+    <div class="container">
+        <h1>CSV Data Viewer</h1>
+        <h2 id="clock">Clock</h2>
+        <label>latency:</label>
+        <label id="latency"></label>
+        <h3></h3>
+        <label>missed packets:</label>
+        <label id="missedPackets"></label>
+        <h3></h3>
+        <input id="sampleRate" autocomplete="off"></input>
+        <button id="setSampleRate" onclick="setSampleRate()">Set Sample Rate (ms)</button>
+        <button id="resetSampleRate" onclick="resetSampleRate()">250ms</button>
+        <table id="data-table">
+            <thead>
+                <tr>
+                    <th>Field</th>
+                    <th>Realtime</th>
+                    <th>Min</th>
+                    <th>Max</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <!-- Data will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+</body>
+
+</html>
