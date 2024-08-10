@@ -14,15 +14,17 @@ CORS(app)
 csv_file = 'sample_data/TRIMMED_track1_run_4_second_10ms_interp.csv'
 df = pd.read_csv(csv_file)
 total_rows = len(df)
-current_index = 0
+start_time = time.time()
 ms_per_step = 10  # Interval in milliseconds
-
 
 @app.route('/data', methods=['GET'])
 def get_data():
-    global current_index
     if df.empty:
         return jsonify({'error': 'No data available'}), 500
+
+    # Calculate the current index based on elapsed time
+    elapsed_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+    current_index = int(elapsed_time // ms_per_step) % total_rows
 
     # Get the current row
     row = df.iloc[current_index]
@@ -33,28 +35,11 @@ def get_data():
     # Convert dictionary to JSON with ordered keys
     row_json = json.dumps(row_dict, ensure_ascii=False)
 
-    # Update index
-    current_index = (current_index + 1) % total_rows
-
     return row_json, 200, {'Content-Type': 'application/json'}
-
 
 @app.route('/rows', methods=['GET'])
 def get_total_rows():
     return jsonify({'totalRows': total_rows})
 
-
-def update_index():
-    global current_index
-    while True:
-        time.sleep(ms_per_step / 1000)  # Convert milliseconds to seconds
-        current_index = (current_index + 1) % total_rows
-
-
 if __name__ == '__main__':
-    # Start the index update in a separate thread
-    thread = Thread(target=update_index)
-    thread.daemon = True
-    thread.start()
-
     app.run(port=3000)
