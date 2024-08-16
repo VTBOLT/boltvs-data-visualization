@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Data Display</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            overflow: hidden; /* Prevent scrolling the whole page */
+        }
+
+        #map-container {
+            width: 33%;
+            height: 100vh;
+            box-sizing: border-box;
+            padding: 10px; /* Add padding to avoid clipping */
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            border-radius: 20px; /* Apply rounded corners to the map */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* added a shadow for better effect */
+        }
+
+        #content-container {
+            width: 67%;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+        }
+
+        #chart-container {
+            height: 66%;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #data-display {
+            height: 34%;
+            width: 100%;
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            overflow-y: scroll;
+            background-color: #f4f4f4;
+            box-sizing: border-box;
+        }
+
+        .data-box {
+            width: 180px;
+            height: 80px;
+            margin: 5px;
+            padding: 10px;
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+
+        .data-box label {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .value {
+            font-size: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
+    <div id="content-container">
+        <div id="chart-container">
+            <canvas id="chart"></canvas>
+        </div>
+        <div id="data-display" class="data-container"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Leaflet Map centered on coordinates with zoom level adjusted
+        const map = L.map('map').setView([36.47967222013333, -77.57845167185923], 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        }).addTo(map);
+
+        // Marker at NCBike track
+        L.marker([36.47967222013333, -77.57845167185923]).addTo(map)
+            .bindPopup('NCBike Race Track')
+            .openPopup();
+
+        // Chart.js Graph
+        const ctx = document.getElementById('chart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Labels will represent time (seconds)
+                datasets: []
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        title: {
+                            display: true,
+                            text: 'Time (s)'
+                        }
+                    },
+                    y: {} // This will be dynamically populated
+                }
+            }
+        });
+
+        const colors = ['#1abc9c', '#3498db', '#e74c3c', '#9b59b6', '#f39c12', '#2ecc71', '#e67e22', '#34495e'];
+
+        let startTime = null; // Initialize start time when the first data point arrives
+
+        // Data storage to keep all incoming data points
+        const dataStorage = {};
+
+        function updateBoxValues(data) {
+            const timeValue = data['Time[s]']; // Use 'Time[s]' directly from the JSON data
+            if (startTime === null) {
+                startTime = timeValue; // Set startTime on the first data point
+            }
+
+            // Update data storage with the latest values
+            Object.keys(data).forEach((key) => {
+                if (!dataStorage[key]) {
+                    dataStorage[key] = [];
+                }
+                dataStorage[key].push({ x: timeValue, y: data[key] });
+
+                const box = document.getElementById(`box-${key}`);
+                if (box) {
+                    box.querySelector('.value').textContent = data[key];
+                }
+            });
+
+            // Update the X-axis min to start from the first recorded time and max to the most recent
+            chart.options.scales.x.min = startTime;
+            chart.options.scales.x.max = timeValue;
+
+            chart.update();
+        }
+
+        function toggleDataset(label) {
+            const existingDataset = chart.data.datasets.find(ds => ds.label === label);
+
+            if (existingDataset) {
+                // If the dataset is already active, remove it
+                chart.data.datasets = chart.data.datasets.filter(ds => ds.label !== label);
+                delete chart.options.scales[label]; // Remove the corresponding Y-axis
+            } else {
+                // If the dataset is not active, add all stored data points
+                const color = colors[chart.data.datasets.length % colors.length];
+                chart.data.datasets.push({
+                    label: label,
+                    data: dataStorage[label] || [], // Add all recorded data points
+                    borderColor: color,
+                    fill: false,
+                    yAxisID: label
+                });
+
+                // Add a new Y-axis for this dataset
+                chart.options.scales[label] = {
+                    type: 'linear',
+                    position: 'left',
+                    id: label,
+                    title: {
+                        display: true,
+                        text: label
+                    }
+                };
+            }
+
+            chart.update();
+        }
+
+        function initializeButtons(data) {
+            const displayElement = document.getElementById('data-display');
+            displayElement.innerHTML = ''; // Clear previous data
+
+            Object.keys(data).forEach((key, index) => {
+                const colorClass = colors[index % colors.length]; // Cycle through colors
+                const box = document.createElement('div');
+                box.className = `data-box`; // Re-apply the data-box class
+                box.style.backgroundColor = colorClass; // Apply the background color directly
+                box.id = `box-${key}`; // Assign an ID to each box
+                box.innerHTML = `<label>${key}</label><div class="value">${data[key]}</div>`;
+                box.onclick = () => toggleDataset(key);
+                displayElement.appendChild(box);
+            });
+        }
+
+        // Fetch data and update the values in the boxes and graph every 100ms
+        setInterval(() => {
+            fetch('http://127.0.0.1:3000/data')
+                .then(response => response.json())
+                .then(data => updateBoxValues(data))
+                .catch(error => console.error('Error fetching data:', error));
+        }, 100);
+
+        // Fetch initial data to create buttons
+        fetch('http://127.0.0.1:3000/data')
+            .then(response => response.json())
+            .then(data => initializeButtons(data))
+            .catch(error => console.error('Error fetching data:', error));
+    </script>
+</body>
+</html>
