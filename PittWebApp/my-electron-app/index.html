@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Data Display</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden; /* Prevent scrolling the whole page */
+        }
+
+        #top-container {
+            display: flex;
+            height: 60vh; /* Align the top section with the map and chart */
+        }
+
+        #map-container {
+            width: 33%;
+            height: 100%;
+            box-sizing: border-box;
+            padding: 10px; /* Add padding to avoid clipping */
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            border-radius: 20px; /* Apply rounded corners to the map */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Optional: add a shadow for better effect */
+        }
+
+        #chart-container {
+            width: 67%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        #data-display {
+            height: 40vh; /* Adjust height to fit remaining window space */
+            width: 100%;
+            padding: 5px; /* Reduce padding around buttons */
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center; /* Center the buttons */
+            overflow-y: hidden; /* Disable scrolling unless required */
+            background-color: #f4f4f4;
+            box-sizing: border-box;
+        }
+
+        .data-box-container {
+            display: flex;
+            flex-wrap: wrap;
+            width: 100%;
+            justify-content: space-around;
+        }
+
+        .data-box {
+            width: calc(24% - 5px); /* Slightly increase the width and reduce space */
+            height: 7vh; /* Keep the height */
+            margin: 3px; /* Reduce margin for smaller space between buttons */
+            padding: 3px; /* Reduce padding for a more compact look */
+            border-radius: 10px;
+            font-size: 1vw; /* Responsive font size */
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-sizing: border-box;
+            border: 2px solid transparent; /* Default border */
+            background: linear-gradient(135deg, #660000 40%, #FF6600 60%); /* VT maroon to orange, sharp transition */
+            color: white; /* Ensure text is visible */
+        }
+
+        .data-box.active {
+            border: 2px solid black; /* Border for active (selected) variables */
+        }
+
+        .data-box label {
+            font-size: 0.9vw; /* Responsive label size */
+            margin-bottom: 2px;
+            text-align: center; /* Ensure text is centered */
+            white-space: nowrap; /* Prevent label from wrapping */
+            overflow: hidden;
+            text-overflow: ellipsis; /* Truncate if too long */
+        }
+
+        .value {
+            font-size: 1vw; /* Responsive value size */
+            font-weight: bold;
+            text-align: center;
+        }
+
+        /* Multi-Axis Switch Styling */
+        .switch-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 25px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 25px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 2.5px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #4caf50;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        @media (max-width: 768px) {
+            /* Adjust for smaller screens */
+            .data-box {
+                width: 45%;
+                height: 9vh;
+                font-size: 2vw;
+            }
+
+            .data-box label, .value {
+                font-size: 3vw;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="top-container">
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
+        <div id="chart-container">
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+    <div id="data-display" class="data-container"></div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Leaflet Map
+        let map;
+        let isFirstUpdate = true;
+        let useMultipleYAxes = true; // Variable to track whether to use multiple Y axes
+
+        function initializeMap(lat, lon) {
+            map = L.map('map').setView([lat, lon], 16); // Initialize the map at the first coordinates received
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            // Add the first marker for the bike's initial location
+            L.circleMarker([lat, lon], {
+                color: 'red',
+                radius: 5
+            }).addTo(map).bindPopup('Initial Bike Location').openPopup();
+        }
+
+        function updateMap(lat, lon) {
+            // Add a new marker for each new location without re-centering the map
+            L.circleMarker([lat, lon], {
+                color: 'blue',
+                radius: 5
+            }).addTo(map).bindPopup(`Lat: ${lat}, Lon: ${lon}`);
+        }
+
+        // Chart.js Graph
+        const ctx = document.getElementById('chart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Labels will represent time (seconds)
+                datasets: []
+            },
+            options: {
+                animation: false, // Disable animation for instant plotting of data points
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        title: {
+                            display: true,
+                            text: 'Time (s)'
+                        }
+                    },
+                    y: {} // This will be dynamically populated
+                }
+            }
+        });
+
+        const colors = ['#1abc9c', '#3498db', '#e74c3c', '#9b59b6', '#f39c12', '#2ecc71', '#e67e22', '#34495e'];
+
+        let startTime = null; // Initialize start time when the first data point arrives
+
+        // Data storage to keep all incoming data points
+        const dataStorage = {};
+
+        // Section data based on the new JSON structure
+        const sections = {
+            "General": [
+                "bike_speed", "bike_status", "bms_error", "bms_temperature", "high_cell_temp", 
+                "lat", "lon", "low_cell_temp", "mc_fault", "mc_temperature", 
+                "motor_on", "motor_speed", "motor_temperature", "pack_current", 
+                "pack_state_of_charge"
+            ]
+        };
+
+        function updateBoxValues(data) {
+            // Convert the timestamp from milliseconds to seconds and start at 0
+            const timeValue = (data['timestamp'] - startTime) / 1000; // Convert to seconds and normalize
+
+            if (startTime === null) {
+                startTime = data['timestamp']; // Set startTime to the first timestamp in milliseconds
+                initializeMap(data['lat'], data['lon']); // Initialize the map with the first lat/lon
+            }
+
+            // Update the map with the new latitude and longitude
+            updateMap(data['lat'], data['lon']);
+
+            // Update data storage with the latest values
+            Object.keys(data).forEach((key) => {
+                if (!dataStorage[key]) {
+                    dataStorage[key] = [];
+                }
+                dataStorage[key].push({ x: timeValue, y: data[key] });
+
+                const box = document.getElementById(`box-${key}`);
+                if (box) {
+                    const roundedValue = Math.round(data[key] * 100) / 100; // Round to the hundredth
+                    box.querySelector('.value').textContent = roundedValue;
+                }
+            });
+
+            // Update the X-axis min to start from 0 and max to the most recent timeValue
+            chart.options.scales.x.min = 0;
+            chart.options.scales.x.max = timeValue;
+
+            chart.update();
+        }
+
+        function toggleDataset(label) {
+            const existingDataset = chart.data.datasets.find(ds => ds.label === label);
+            const box = document.getElementById(`box-${label}`);
+
+            if (existingDataset) {
+                // If the dataset is already active, remove it
+                chart.data.datasets = chart.data.datasets.filter(ds => ds.label !== label);
+                delete chart.options.scales[label]; // Remove the corresponding Y-axis
+                box.classList.remove('active'); // Remove active border
+            } else {
+                // If the dataset is not active, add all stored data points
+                const color = colors[chart.data.datasets.length % colors.length];
+                chart.data.datasets.push({
+                    label: label,
+                    data: dataStorage[label] || [], // Add all recorded data points
+                    borderColor: color,
+                    fill: false,
+                    yAxisID: useMultipleYAxes ? label : 'sharedAxis'
+                });
+
+                // Add a new Y-axis for this dataset if multiple Y axes are enabled
+                if (useMultipleYAxes) {
+                    chart.options.scales[label] = {
+                        type: 'linear',
+                        position: 'left',
+                        id: label,
+                        title: {
+                            display: true,
+                            text: label
+                        }
+                    };
+                } else {
+                    // Use a shared Y-axis if multiple Y axes are disabled
+                    chart.options.scales.sharedAxis = {
+                        type: 'linear',
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Shared Axis'
+                        }
+                    };
+                }
+                box.classList.add('active'); // Add active border
+            }
+
+            chart.update();
+        }
+
+        function toggleMultiAxis() {
+            useMultipleYAxes = !useMultipleYAxes; // Toggle between multi-axis and single-axis mode
+
+            if (!useMultipleYAxes) {
+                // Switch to shared Y-axis: Remove all other Y-axes
+                Object.keys(chart.options.scales).forEach((axis) => {
+                    if (axis !== 'x') delete chart.options.scales[axis];
+                });
+
+                // Add shared Y-axis
+                chart.options.scales.sharedAxis = {
+                    type: 'linear',
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Shared Axis'
+                    }
+                };
+            } else {
+                // Restore individual Y-axes
+                chart.data.datasets.forEach(dataset => {
+                    chart.options.scales[dataset.label] = {
+                        type: 'linear',
+                        position: 'left',
+                        id: dataset.label,
+                        title: {
+                            display: true,
+                            text: dataset.label
+                        }
+                    };
+                });
+
+                // Remove shared Y-axis
+                delete chart.options.scales.sharedAxis;
+            }
+
+            chart.data.datasets.forEach(dataset => {
+                dataset.yAxisID = useMultipleYAxes ? dataset.label : 'sharedAxis';
+            });
+
+            chart.update();
+        }
+
+        function initializeButtons(data) {
+            const displayElement = document.getElementById('data-display');
+            displayElement.innerHTML = ''; // Clear previous data
+
+            const dataBoxContainer = document.createElement('div');
+            dataBoxContainer.className = 'data-box-container';
+
+            // Add the "Multi-Axis" switch button
+            const multiAxisBox = document.createElement('div');
+            multiAxisBox.className = `data-box`;
+            multiAxisBox.style.background = 'linear-gradient(135deg, #660000 40%, #FF6600 60%)'; // VT maroon to orange sharp transition
+            multiAxisBox.innerHTML = `
+                <label>Multi-Axis</label>
+                <div class="switch-container">
+                    <label class="switch">
+                        <input type="checkbox" id="multi-axis-switch" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            `;
+            multiAxisBox.onclick = toggleMultiAxis;
+            dataBoxContainer.appendChild(multiAxisBox);
+
+            // Add all the other buttons
+            sections["General"].forEach((key) => {
+                if (data.hasOwnProperty(key)) {
+                    const box = document.createElement('div');
+                    box.className = `data-box`;
+                    box.style.background = 'linear-gradient(135deg, #660000 40%, #FF6600 60%)'; // VT maroon to orange sharp transition
+                    box.id = `box-${key}`; // Assign an ID to each box
+                    const roundedValue = Math.round(data[key] * 100) / 100; // Round to the hundredth
+                    box.innerHTML = `<label>${key}</label><div class="value">${roundedValue}</div>`;
+                    box.onclick = () => toggleDataset(key);
+                    dataBoxContainer.appendChild(box);
+                }
+            });
+
+            displayElement.appendChild(dataBoxContainer);
+
+            // Add event listener to toggle switch for multi-axis
+            const multiAxisSwitch = document.getElementById('multi-axis-switch');
+            multiAxisSwitch.addEventListener('change', () => {
+                toggleMultiAxis();
+            });
+        }
+
+        // Fetch data and update the values in the boxes and graph every 100ms
+        setInterval(() => {
+            fetch('https://dashtest.vtbolt.com') // Updated to fetch data from the new URL
+                .then(response => response.json())
+                .then(data => updateBoxValues(data))
+                .catch(error => console.error('Error fetching data:', error));
+        }, 100);
+
+        // Fetch initial data to create buttons
+        fetch('https://dashtest.vtbolt.com')
+            .then(response => response.json())
+            .then(data => initializeButtons(data))
+            .catch(error => console.error('Error fetching data:', error));
+    </script>
+</body>
+</html>

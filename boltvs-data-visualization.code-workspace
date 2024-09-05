@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "boltvs-data-visualization",
+			"path": "."
+		},
+		{
+			"name": "PittWebApp",
+			"path": "../../Downloads/WebAppFiles/PittWebApp"
+		}
+	],
+	"settings": {}
+}
